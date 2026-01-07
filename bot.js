@@ -6,7 +6,7 @@ import fs from "fs";
 let lastIntent = null;
 let currentState = null;
 let stateEnteredAt = null;
-
+const STATE_TTL_MS = 1000 * 60; // 5 minutes
 function logUnknownInput(text, score) {
     const data = JSON.parse(fs.readFileSync("unknown_inputs.json"));
     data.push({
@@ -28,6 +28,20 @@ async function prepareIntentEmbeddings() {
 }
 
 async function getResponse(message) {
+
+  // ---- 0. State decay check ----
+if (
+  currentState &&
+  Date.now() - stateEnteredAt > STATE_TTL_MS
+) {
+  if (currentState.onExit) {
+    currentState.onExit();
+  }
+  currentState = null;
+  stateEnteredAt = null;
+}
+
+
   const inputVector = await getEmbedding(message);
 
   // ---- 1. Score all intents ----
