@@ -4,6 +4,9 @@ import { getEmbedding } from "./fixed_calculations/embedder.js";
 import { cosineSimilarity } from "./fixed_calculations/similarity.js";
 import fs from "fs";
 let lastIntent = null;
+let currentState = null;
+let stateEnteredAt = null;
+
 function logUnknownInput(text, score) {
     const data = JSON.parse(fs.readFileSync("unknown_inputs.json"));
     data.push({
@@ -27,53 +30,58 @@ async function prepareIntentEmbeddings() {
 async function getResponse(message) {
   const inputVector = await getEmbedding(message);
 
-  const candidates = [];
+  // ---- 1. Score all intents ----
+  const scored = [];
 
-  // 1. Score ALL intents
   for (const intent of intents) {
-    let intentBest = 0;
+    let best = 0;
 
     for (const vector of intent.vectors) {
-      intentBest = Math.max(
-        intentBest,
+      best = Math.max(
+        best,
         cosineSimilarity(inputVector, vector)
       );
     }
 
-    candidates.push({
-      intent,
-      score: intentBest
-    });
+    scored.push({ intent, score: best });
   }
 
-  // 2. Apply confidence threshold
-  const confident = candidates.filter(
-    c => c.score >= 0.65
-  );
+  // ---- 2. Confidence filter ----
+  const confident = scored.filter(s => s.score >= 0.65);
+  if (confident.length === 0) {
+    return "Sorry, I don't understand yet. and less than 65% confidence";
+  }
 
-  // 3. Apply transition constraints
-  const valid = confident.filter(c => {
-    const allowed = c.intent.allowedPreviousIntents;
-    if (!allowed) return true; // no constraint
-    return allowed.includes(lastIntent);
+  // ---- 3. Transition validation ----
+  const valid = confident.filter(({ intent }) => {
+    if (!intent.allowedPreviousIntents) return true;
+    return intent.allowedPreviousIntents.includes(currentState?.name);
   });
 
-  // 4. Pick best remaining candidate
   if (valid.length === 0) {
-    return "Sorry, I don't understand yet.";
+    return "Sorry, I don't understand yet. and not allowed previous intents";
   }
 
+  // ---- 4. Choose best valid intent ----
   valid.sort((a, b) => b.score - a.score);
-  const chosen = valid[0];
+  const nextState = valid[0].intent;
 
-  // 5. Update memory
-  lastIntent = chosen.intent.name.replace("_followup", "");
+  // ---- 5. EXIT current state ----
+  if (currentState?.onExit) {
+    currentState.onExit();
+  }
 
-  // 6. Respond
-  return typeof chosen.intent.response === "function"
-    ? chosen.intent.response()
-    : chosen.intent.response;
+  // ---- 6. ENTER new state ----
+  currentState = nextState;
+  stateEnteredAt = Date.now();
+
+  if (currentState.onEnter) {
+    return currentState.onEnter();
+  }
+
+  return typeof currentState.response === 'function' ? currentState.response() : currentState.response;
 }
+
 
 
   

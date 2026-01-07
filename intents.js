@@ -7,13 +7,19 @@ export const intents = [
     {
       name: "how_are_you",
       examples: ["how are you", "how are you doing", "how r u"],
-      response: "I'm doing well 🙂"
+      onEnter: () => "I'm doing well 🙂"
     },
     {
       name: "time",
-      examples: ["what is the time", "current time", "time now"],
-      response: () => new Date().toLocaleTimeString()
-    },
+      examples: ["what is the time", "current time","time now"],
+      onEnter: () => {
+        return new Date().toLocaleTimeString();
+      },
+      onExit: () => {
+        console.log("[EXIT] time");
+      }
+    }
+    ,
     {
       name: "joke",
       examples: [
@@ -32,7 +38,14 @@ export const intents = [
       ],
       response: "Still doing well 🙂",
       allowedPreviousIntents: ["how_are_you"]
+    },
+    {
+      name: "time_followup",
+      examples: ["and now", "now"],
+      allowedPreviousIntents: ["time"],
+      onEnter: () => {
+        return new Date().toLocaleTimeString();
+      }
     }
-    
   ];
   
