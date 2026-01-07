@@ -22,6 +22,17 @@ export const intents = [
         "make me laugh"
       ],
       response: "😄 Why did the developer go broke? Because he used up all his cache."
+    },
+    {
+      name: "how_are_you_followup",
+      examples: [
+        "and now",
+        "what about now",
+        "now?"
+      ],
+      response: "Still doing well 🙂",
+      allowedPreviousIntents: ["how_are_you"]
     }
+    
   ];
   

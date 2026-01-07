@@ -3,6 +3,7 @@ import { intents } from "./intents.js";
 import { getEmbedding } from "./fixed_calculations/embedder.js";
 import { cosineSimilarity } from "./fixed_calculations/similarity.js";
 import fs from "fs";
+let lastIntent = null;
 function logUnknownInput(text, score) {
     const data = JSON.parse(fs.readFileSync("unknown_inputs.json"));
     data.push({
@@ -24,45 +25,57 @@ async function prepareIntentEmbeddings() {
 }
 
 async function getResponse(message) {
-    const inputVector = await getEmbedding(message);
-  
-    let bestIntent = null;
-    let bestScore = -1;
-  
-    console.log("\nUser:", message);
-    console.log("Similarity scores:");
-  
-    for (const intent of intents) {
-      let intentBest = 0;
-  
-      for (const vector of intent.vectors) {
-        const score = cosineSimilarity(inputVector, vector);
-        intentBest = Math.max(intentBest, score);
-      }
-  
-      console.log(
-        `  ${intent.name.padEnd(12)} → ${intentBest.toFixed(3)}`
+  const inputVector = await getEmbedding(message);
+
+  const candidates = [];
+
+  // 1. Score ALL intents
+  for (const intent of intents) {
+    let intentBest = 0;
+
+    for (const vector of intent.vectors) {
+      intentBest = Math.max(
+        intentBest,
+        cosineSimilarity(inputVector, vector)
       );
-  
-      if (intentBest > bestScore) {
-        bestScore = intentBest;
-        bestIntent = intent;
-      }
     }
-  
-    console.log("Best intent:", bestIntent?.name, "| Score:", bestScore.toFixed(3));
-  
-    // confidence threshold
-    if (bestScore < 0.65) {
-        logUnknownInput(message, bestScore);
-        return "Sorry, I don't understand yet.";
-      }
-      
-  
-    return typeof bestIntent.response === "function"
-      ? bestIntent.response()
-      : bestIntent.response;
+
+    candidates.push({
+      intent,
+      score: intentBest
+    });
   }
+
+  // 2. Apply confidence threshold
+  const confident = candidates.filter(
+    c => c.score >= 0.65
+  );
+
+  // 3. Apply transition constraints
+  const valid = confident.filter(c => {
+    const allowed = c.intent.allowedPreviousIntents;
+    if (!allowed) return true; // no constraint
+    return allowed.includes(lastIntent);
+  });
+
+  // 4. Pick best remaining candidate
+  if (valid.length === 0) {
+    return "Sorry, I don't understand yet.";
+  }
+
+  valid.sort((a, b) => b.score - a.score);
+  const chosen = valid[0];
+
+  // 5. Update memory
+  lastIntent = chosen.intent.name.replace("_followup", "");
+
+  // 6. Respond
+  return typeof chosen.intent.response === "function"
+    ? chosen.intent.response()
+    : chosen.intent.response;
+}
+
+
   
 
 // CLI
