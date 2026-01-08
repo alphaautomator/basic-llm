@@ -116,3 +116,7 @@ if (
     console.log("Bot:", reply);
   });
 })();
+
+export async function handleMessage(input) {
+  return await getResponse(input);
+}
